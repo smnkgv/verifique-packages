@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>verifique packages</title>
+<meta name="description" content="apt and dnf repositories for verifique, a verification queue for coding agents.">
+<style>
+    :root { --page: #f6f7f7; --ink: #1c2023; --soft: #566066; --code: #e9ecec; --link: #14713f; }
+    @media (prefers-color-scheme: dark) {
+        :root { --page: #14181b; --ink: #e8e5de; --soft: #a5acae; --code: #22292d; --link: #5fe39b; }
+    }
+    body { margin: 0; background: var(--page); color: var(--ink); font: 16px/1.55 ui-sans-serif, -apple-system, "Segoe UI", sans-serif; }
+    main { max-width: 760px; margin: 0 auto; padding: 48px 16px 64px; }
+    h1 { margin: 0 0 8px; font-size: 1.8rem; }
+    h2 { margin: 36px 0 8px; font-size: 1.15rem; }
+    p { margin: 8px 0; color: var(--soft); }
+    a { color: var(--link); }
+    pre { margin: 10px 0; padding: 14px 16px; background: var(--code); border-radius: 10px; overflow-x: auto; font: 0.85rem/1.6 ui-monospace, Menlo, Consolas, monospace; }
+    code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.9em; }
+</style>
+</head>
+<body>
+<main>
+    <h1>verifique packages</h1>
+    <p>apt and dnf repositories for <a href="https://verifique.ai">verifique</a>, a verification queue for coding agents. They hold verifique @VERSION@, for x86-64 and ARM, signed with <a href="verifique.asc">this key</a>.</p>
+
+    <h2>Debian and Ubuntu</h2>
+<pre><code>curl -fsSL @URL@/verifique.gpg | sudo tee /usr/share/keyrings/verifique.gpg > /dev/null
+echo "deb [signed-by=/usr/share/keyrings/verifique.gpg] @URL@/deb stable main" | sudo tee /etc/apt/sources.list.d/verifique.list
+sudo apt update && sudo apt install verifique</code></pre>
+
+    <h2>Fedora and RHEL</h2>
+<pre><code>sudo curl -fsSL -o /etc/yum.repos.d/verifique.repo @URL@/rpm/verifique.repo
+sudo dnf install verifique</code></pre>
+
+    <h2>Arch Linux</h2>
+    <p>From the AUR, with an AUR helper such as yay or paru:</p>
+<pre><code>yay -S verifique-bin</code></pre>
+
+    <p>Upgrades then come with the rest of your system. Next, start the queue with <code>verifique service install</code>, as the <a href="https://github.com/smnkgv/verifique#install">README</a> goes on to say. These packages are built from verifique's own releases by <a href="https://github.com/smnkgv/verifique-packages">verifique-packages</a>.</p>
+</main>
+</body>
+</html>

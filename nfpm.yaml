@@ -1,0 +1,44 @@
+# The .deb and .rpm packages of one verifique release, for one processor. scripts/build.sh fills in
+# ARCH (amd64 or arm64), VERSION, BINARY (the verifique taken from the release) and RPM_KEY (the
+# signing key, exported for nfpm).
+name: verifique
+arch: $ARCH
+platform: linux
+version: $VERSION
+release: 1
+section: devel
+priority: optional
+maintainer: Hlib Semeniuk <smnkgv@proton.me>
+vendor: verifique
+homepage: https://verifique.ai
+license: Apache-2.0
+description: |-
+  A verification queue for coding agents.
+  verifique checks every change your coding agents hand over in its own copy of your
+  app, with its own ports and databases, a few at a time so your machine keeps up.
+
+# verifique works in git worktrees and runs your project's commands with sh. It is built
+# statically, so it needs no libraries of its own.
+depends:
+  - git
+overrides:
+  # The status-bar panel is an add-on, installed with `verifique panel install`, and these are
+  # the libraries it needs.
+  deb:
+    suggests:
+      - libwebkit2gtk-4.1-0
+      - libayatana-appindicator3-1
+  rpm:
+    suggests:
+      - webkit2gtk4.1
+      - libayatana-appindicator-gtk3
+
+contents:
+  - src: $BINARY
+    dst: /usr/bin/verifique
+    file_info:
+      mode: 0755
+
+rpm:
+  signature:
+    key_file: $RPM_KEY

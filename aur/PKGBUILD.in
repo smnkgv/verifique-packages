@@ -1,0 +1,24 @@
+# Maintainer: Hlib Semeniuk <smnkgv at proton dot me>
+# Written for each release by https://github.com/smnkgv/verifique-packages, so change it there.
+pkgname=verifique-bin
+pkgver=@VERSION@
+pkgrel=1
+pkgdesc='A verification queue for coding agents'
+arch=('x86_64' 'aarch64')
+url='https://verifique.ai'
+license=('Apache-2.0')
+depends=('git')
+optdepends=('webkit2gtk-4.1: the status-bar panel, installed with verifique panel install'
+            'libayatana-appindicator: the tray icon of the status-bar panel')
+provides=('verifique')
+conflicts=('verifique')
+# The release's build is already stripped, so there is nothing for a debug package to hold.
+options=('!debug' '!strip')
+source_x86_64=("verifique-$pkgver-x86_64.tar.gz::https://github.com/smnkgv/verifique/releases/download/v$pkgver/verifique-linux-x64.tar.gz")
+source_aarch64=("verifique-$pkgver-aarch64.tar.gz::https://github.com/smnkgv/verifique/releases/download/v$pkgver/verifique-linux-arm64.tar.gz")
+sha256sums_x86_64=('@SHA256_X64@')
+sha256sums_aarch64=('@SHA256_ARM64@')
+
+package() {
+  install -Dm755 verifique "$pkgdir/usr/bin/verifique"
+}

@@ -1,0 +1,213 @@
+# Builds the apt and dnf repositories and the AUR package for one verifique release, installs each of
+# them in clean containers, and only then publishes: the repositories to GitHub Pages and the
+# package to the AUR. Without the SIGNING_KEY secret it signs with a throwaway key and publishes
+# nothing, which tests the whole build.
+name: publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: The verifique version to publish, such as 0.3.2. Empty means the latest release.
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+env:
+  NFPM_VERSION: 2.48.0
+  NFPM_SHA256: 6d7f9a28b2f397934403950fcbba83f598b08d02edbe79a0815b3b4897341750
+  PUBLISHED_URL: https://smnkgv.github.io/verifique-packages
+  # The AUR's Ed25519 host key, as aur.archlinux.org publishes it.
+  AUR_HOST_KEY: SHA256:RFzBCUItH9LZS0cKB5UE6ceAYhBD5C8GeOBip8Z11+4
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      real: ${{ steps.key.outputs.real }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Pick the version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WANTED: ${{ inputs.version }}
+        run: |
+          version=${WANTED:-$(gh release view --repo smnkgv/verifique --json tagName --jq .tagName)}
+          echo "version=${version#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Install the tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq apt-utils createrepo-c gettext-base > /dev/null
+          curl -fsSL -o /tmp/nfpm.tar.gz "https://github.com/goreleaser/nfpm/releases/download/v$NFPM_VERSION/nfpm_${NFPM_VERSION}_Linux_x86_64.tar.gz"
+          echo "$NFPM_SHA256  /tmp/nfpm.tar.gz" | sha256sum -c --quiet -
+          sudo tar -xzf /tmp/nfpm.tar.gz -C /usr/local/bin nfpm
+
+      - name: Load the signing key
+        id: key
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+        run: |
+          if [ -n "$SIGNING_KEY" ]; then
+            printf '%s\n' "$SIGNING_KEY" | gpg --batch --quiet --import
+            echo real=true >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::There is no SIGNING_KEY secret, so this run signs with a throwaway key and publishes nothing."
+            gpg --batch --quiet --passphrase '' --quick-gen-key "verifique test key <test@example.invalid>" ed25519 sign never
+            echo real=false >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build the repositories
+        env:
+          PACKAGES_URL: ${{ env.PUBLISHED_URL }}
+        run: sh scripts/build.sh "${{ steps.version.outputs.version }}"
+
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+
+      - name: Write the AUR package
+        run: sh scripts/aur.sh "${{ steps.version.outputs.version }}" aur-out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aur
+          path: aur-out
+
+  test:
+    needs: build
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { image: "ubuntu:24.04", way: apt }
+          - { image: "ubuntu:latest", way: apt }
+          - { image: "debian:stable", way: apt }
+          - { image: "fedora:latest", way: dnf }
+          - { image: "archlinux:latest", way: aur }
+    name: test (${{ matrix.image }})
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: github-pages
+          path: pages
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: aur
+          path: aur-out
+
+      - name: Serve the repositories here
+        run: |
+          mkdir site
+          tar -xf pages/artifact.tar -C site
+          nohup python3 -m http.server 8000 --bind 127.0.0.1 --directory site > /dev/null 2>&1 &
+          sleep 1
+
+      - name: Install with ${{ matrix.way }}
+        run: |
+          case "${{ matrix.way }}" in
+            aur) args="aur-out" ;;
+            *) args="http://127.0.0.1:8000" ;;
+          esac
+          docker run --rm --network host -v "$PWD:/work" -w /work "${{ matrix.image }}" \
+            sh "scripts/test-${{ matrix.way }}.sh" $args "${{ needs.build.outputs.version }}"
+
+      - if: matrix.way == 'aur'
+        uses: actions/upload-artifact@v4
+        with:
+          name: aur-built
+          path: |
+            aur-out/PKGBUILD
+            aur-out/.SRCINFO
+          include-hidden-files: true
+
+  pages:
+    needs: [build, test]
+    if: needs.build.outputs.real == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
+
+  aur:
+    needs: [build, test]
+    if: needs.build.outputs.real == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: aur-built
+          path: aur-out
+
+      - name: Push to the AUR
+        env:
+          AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          if [ -z "$AUR_SSH_KEY" ]; then
+            echo "::warning::There is no AUR_SSH_KEY secret, so the AUR package was not updated."
+            exit 0
+          fi
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$AUR_SSH_KEY" > ~/.ssh/aur && chmod 600 ~/.ssh/aur
+          ssh-keyscan -t ed25519 aur.archlinux.org 2> /dev/null > /tmp/aur-host
+          [ "$(ssh-keygen -lf /tmp/aur-host | awk '{ print $2 }')" = "$AUR_HOST_KEY" ] || { echo "aur.archlinux.org did not show the key the AUR publishes" >&2; exit 1; }
+          cat /tmp/aur-host >> ~/.ssh/known_hosts
+          export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/aur -o IdentitiesOnly=yes"
+          git clone -q ssh://aur@aur.archlinux.org/verifique-bin.git aur-repo
+          cp aur-out/PKGBUILD aur-out/.SRCINFO aur-repo/
+          cd aur-repo
+          git add PKGBUILD .SRCINFO
+          if git diff --cached --quiet; then
+            echo "The AUR already has verifique $VERSION."
+            exit 0
+          fi
+          git -c user.name="Hlib Semeniuk" -c user.email="smnkgv@proton.me" commit -q -m "verifique $VERSION"
+          git push -q origin HEAD:master
+          echo "Pushed verifique $VERSION to the AUR."
+
+  live:
+    needs: [build, pages]
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { image: "ubuntu:latest", way: apt }
+          - { image: "fedora:latest", way: dnf }
+    name: live (${{ matrix.image }})
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Wait for GitHub Pages to serve this version
+        run: |
+          for _ in $(seq 60); do
+            curl -fsSL "$PUBLISHED_URL/" | grep -q "verifique ${{ needs.build.outputs.version }}," && exit 0
+            sleep 5
+          done
+          echo "GitHub Pages still serves another version after five minutes" >&2
+          exit 1
+
+      - name: Install from ${{ env.PUBLISHED_URL }}
+        run: |
+          docker run --rm -v "$PWD:/work" -w /work "${{ matrix.image }}" \
+            sh "scripts/test-${{ matrix.way }}.sh" "$PUBLISHED_URL" "${{ needs.build.outputs.version }}"
