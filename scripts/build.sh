@@ -1,7 +1,8 @@
 #!/bin/sh
 # Builds the signed apt and dnf repositories holding one verifique release, in site/, ready for
-# GitHub Pages. Each package is made from the release's own Linux build, checked against the
-# release's checksums, so the packages hold exactly what the release published.
+# GitHub Pages, and scripts/build-arch.sh then adds the pacman one. Each package is made from the
+# release's own Linux build, checked against the release's checksums, so the packages hold exactly
+# what the release published.
 #   sh scripts/build.sh 0.3.2
 # Needs curl, nfpm, apt-ftparchive (apt-utils), createrepo_c, envsubst (gettext-base) and gpg holding
 # the signing key. PACKAGES_URL is where the site will be served, for the files that name it.
@@ -81,6 +82,6 @@ EOF
 gpg --batch --armor --export "$key" > "$site/verifique.asc"
 gpg --batch --export "$key" > "$site/verifique.gpg"
 
-sed -e "s#@URL@#$url#g" -e "s#@VERSION@#$version#g" "$root/index.html" > "$site/index.html"
+sed -e "s#@URL@#$url#g" -e "s#@VERSION@#$version#g" -e "s#@FINGERPRINT@#$key#g" "$root/index.html" > "$site/index.html"
 touch "$site/.nojekyll"
 echo "built the repositories for verifique $version in $site"

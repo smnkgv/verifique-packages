@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>verifique packages</title>
-<meta name="description" content="apt and dnf repositories for verifique, a verification queue for coding agents.">
+<meta name="description" content="apt, dnf and pacman repositories for verifique, a verification queue for coding agents.">
 <style>
     :root { --page: #f6f7f7; --ink: #1c2023; --soft: #566066; --code: #e9ecec; --link: #14713f; }
     @media (prefers-color-scheme: dark) {
@@ -23,7 +23,7 @@
 <body>
 <main>
     <h1>verifique packages</h1>
-    <p>apt and dnf repositories for <a href="https://verifique.ai">verifique</a>, a verification queue for coding agents. They hold verifique @VERSION@, for x86-64 and ARM, signed with <a href="verifique.asc">this key</a>.</p>
+    <p>apt, dnf and pacman repositories for <a href="https://verifique.ai">verifique</a>, a verification queue for coding agents. They hold verifique @VERSION@, for x86-64 and ARM, signed with <a href="verifique.asc">this key</a>.</p>
 
     <h2>Debian and Ubuntu</h2>
 <pre><code>curl -fsSL @URL@/verifique.gpg | sudo tee /usr/share/keyrings/verifique.gpg > /dev/null
@@ -35,8 +35,11 @@ sudo apt update && sudo apt install verifique</code></pre>
 sudo dnf install verifique</code></pre>
 
     <h2>Arch Linux</h2>
-    <p>From the AUR, with an AUR helper such as yay or paru:</p>
-<pre><code>yay -S verifique-bin</code></pre>
+    <p>Trust the signing key once, add the repository to pacman, then install. It is x86-64 only, as Arch Linux is.</p>
+<pre><code>curl -fsSL @URL@/verifique.asc | sudo pacman-key --add -
+sudo pacman-key --lsign-key @FINGERPRINT@
+printf '\n[verifique]\nServer = @URL@/arch/$arch\n' | sudo tee -a /etc/pacman.conf
+sudo pacman -Syu verifique</code></pre>
 
     <p>Upgrades then come with the rest of your system. Next, start the queue with <code>verifique service install</code>, as the <a href="https://github.com/smnkgv/verifique#install">README</a> goes on to say. These packages are built from verifique's own releases by <a href="https://github.com/smnkgv/verifique-packages">verifique-packages</a>.</p>
 </main>

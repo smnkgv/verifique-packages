@@ -1,5 +1,5 @@
-# Builds the apt and dnf repositories and the AUR package for one verifique release, installs each of
-# them in clean containers, and only then publishes: the repositories to GitHub Pages and the
+# Builds the apt, dnf and pacman repositories and the AUR package for one verifique release, installs
+# each of them in clean containers, and only then publishes: the repositories to GitHub Pages and the
 # package to the AUR. Without the SIGNING_KEY secret it signs with a throwaway key and publishes
 # nothing, which tests the whole build.
 name: publish
@@ -71,12 +71,19 @@ jobs:
           PACKAGES_URL: ${{ env.PUBLISHED_URL }}
         run: sh scripts/build.sh "${{ steps.version.outputs.version }}"
 
+      - name: Write the AUR package
+        run: sh scripts/aur.sh "${{ steps.version.outputs.version }}" aur-out
+
+      - name: Build the pacman repository
+        run: |
+          gpg --batch --armor --export-secret-keys > "$RUNNER_TEMP/signing.asc"
+          docker run --rm -v "$PWD:/work" -v "$RUNNER_TEMP/signing.asc:/keys/signing.asc:ro" -w /work archlinux:latest \
+            sh scripts/build-arch.sh "${{ steps.version.outputs.version }}" aur-out /keys/signing.asc
+          rm "$RUNNER_TEMP/signing.asc"
+
       - uses: actions/upload-pages-artifact@v4
         with:
           path: site
-
-      - name: Write the AUR package
-        run: sh scripts/aur.sh "${{ steps.version.outputs.version }}" aur-out
 
       - uses: actions/upload-artifact@v4
         with:
@@ -94,8 +101,9 @@ jobs:
           - { image: "ubuntu:latest", way: apt }
           - { image: "debian:stable", way: apt }
           - { image: "fedora:latest", way: dnf }
+          - { image: "archlinux:latest", way: pacman }
           - { image: "archlinux:latest", way: aur }
-    name: test (${{ matrix.image }})
+    name: test (${{ matrix.image }}, ${{ matrix.way }})
     steps:
       - uses: actions/checkout@v5
 
@@ -172,7 +180,14 @@ jobs:
           ssh-keyscan -t ed25519 aur.archlinux.org 2> /dev/null > /tmp/aur-host
           [ "$(ssh-keygen -lf /tmp/aur-host | awk '{ print $2 }')" = "$AUR_HOST_KEY" ] || { echo "aur.archlinux.org did not show the key the AUR publishes" >&2; exit 1; }
           cat /tmp/aur-host >> ~/.ssh/known_hosts
-          export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/aur -o IdentitiesOnly=yes"
+          export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/aur -o IdentitiesOnly=yes -o BatchMode=yes"
+          # The key only works once its public half is in the AUR account's settings.
+          answer=$($GIT_SSH_COMMAND aur@aur.archlinux.org help 2>&1) || true
+          case "$answer" in
+            *"Permission denied"*)
+              echo "::warning::The AUR does not accept AUR_SSH_KEY yet, so the AUR package was not updated. Its public half goes in the AUR account's settings."
+              exit 0 ;;
+          esac
           git clone -q ssh://aur@aur.archlinux.org/verifique-bin.git aur-repo
           cp aur-out/PKGBUILD aur-out/.SRCINFO aur-repo/
           cd aur-repo
@@ -194,7 +209,8 @@ jobs:
         include:
           - { image: "ubuntu:latest", way: apt }
           - { image: "fedora:latest", way: dnf }
-    name: live (${{ matrix.image }})
+          - { image: "archlinux:latest", way: pacman }
+    name: live (${{ matrix.image }}, ${{ matrix.way }})
     steps:
       - uses: actions/checkout@v5
 

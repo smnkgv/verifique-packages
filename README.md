@@ -1,10 +1,10 @@
 # verifique packages
 
-apt and dnf repositories and an AUR package for [verifique](https://github.com/smnkgv/verifique),
-a verification queue for coding agents. They are the Linux counterpart of the
-[Homebrew tap](https://github.com/smnkgv/homebrew-verifique) and the
-[Scoop bucket](https://github.com/smnkgv/scoop-verifique), and hold verifique's own release
-builds for x86-64 and ARM, unchanged.
+apt, dnf and pacman repositories and an AUR package for
+[verifique](https://github.com/smnkgv/verifique), a verification queue for coding agents. They are
+the Linux counterpart of the [Homebrew tap](https://github.com/smnkgv/homebrew-verifique) and the
+[Scoop bucket](https://github.com/smnkgv/scoop-verifique), and hold verifique's own release builds,
+unchanged.
 
 ## Install
 
@@ -23,11 +23,17 @@ sudo curl -fsSL -o /etc/yum.repos.d/verifique.repo https://smnkgv.github.io/veri
 sudo dnf install verifique
 ```
 
-Arch Linux, from the AUR with a helper such as yay or paru:
+Arch Linux, on x86-64: trust the signing key once, add the repository to pacman, then install:
 
 ```bash
-yay -S verifique-bin
+curl -fsSL https://smnkgv.github.io/verifique-packages/verifique.asc | sudo pacman-key --add -
+sudo pacman-key --lsign-key BD3CA969126EAF73205EBAE45C27008897635E6B
+printf '\n[verifique]\nServer = https://smnkgv.github.io/verifique-packages/arch/$arch\n' | sudo tee -a /etc/pacman.conf
+sudo pacman -Syu verifique
 ```
+
+The AUR package, `verifique-bin`, is built and tested on every run too, and goes to the AUR once the
+AUR takes new accounts again.
 
 Upgrades then come with the rest of the system. The packages put `verifique` in `/usr/bin` and
 bring `git`. The status-bar panel stays an add-on, installed with `verifique panel install`, and
@@ -43,10 +49,10 @@ unless told otherwise, and:
    ([nfpm.yaml](nfpm.yaml));
 2. builds the apt repository (one suite, `stable`) and the dnf repository, and signs the
    packages and both repositories' metadata ([scripts/build.sh](scripts/build.sh));
-3. writes the AUR package's `PKGBUILD` ([aur/PKGBUILD.in](aur/PKGBUILD.in));
-4. installs from the repositories in clean Ubuntu, Debian and Fedora containers, and builds and
-   installs the AUR package on Arch, the way their instructions say
-   ([scripts/](scripts));
+3. writes the AUR package's `PKGBUILD` ([aur/PKGBUILD.in](aur/PKGBUILD.in)), and builds the signed
+   pacman repository from it on Arch ([scripts/build-arch.sh](scripts/build-arch.sh));
+4. installs from the repositories in clean Ubuntu, Debian, Fedora and Arch containers, and builds
+   and installs the AUR package on Arch, the way their instructions say ([scripts/](scripts));
 5. only then publishes the repositories to GitHub Pages and the package to the AUR, and installs
    from the published repositories once more.
 
@@ -63,5 +69,6 @@ gh workflow run publish.yml -R smnkgv/verifique-packages
 
 It needs two secrets. `SIGNING_KEY` is the armored private key that signs the packages, whose
 public half is served as `verifique.asc` and `verifique.gpg`. `AUR_SSH_KEY` is the private SSH key
-of the AUR account that maintains `verifique-bin`. Without `SIGNING_KEY` the workflow signs with a
-throwaway key and publishes nothing, which tests everything else.
+of the AUR account that maintains `verifique-bin`; until the AUR accepts it, that step says so and
+skips. Without `SIGNING_KEY` the workflow signs with a throwaway key and publishes nothing, which
+tests everything else.
